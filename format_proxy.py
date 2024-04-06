@@ -90,9 +90,10 @@ def split_tokens_from_content(content, max_tokens, model=None):
 
 
 async def stream_response(response, model, max_tokens):
-    completion_tokens = -1
+    radnom_chat_id = f"chatcmpl-{''.join(random.choice(string.ascii_letters + string.digits) for _ in range(29))}"
     system_fingerprint_list = model_system_fingerprint.get(model, None)
     system_fingerprint = random.choice(system_fingerprint_list) if system_fingerprint_list else None
+    completion_tokens = -1
     async for chunk in response.aiter_lines():
         try:
             if chunk == "data: [DONE]":
@@ -103,7 +104,7 @@ async def stream_response(response, model, max_tokens):
                 chunk_old_data = json.loads(chunk[6:])
                 chat_id = chunk_old_data.get("id", "")
                 if chat_id == "chatcmpl-QXlha2FBbmROaXhpZUFyZUF3ZXNvbWUK":
-                    chat_id = f"chatcmpl-{''.join(random.choice(string.ascii_letters + string.digits) for _ in range(29))}"
+                    chat_id = radnom_chat_id
                 if not chat_id:
                     continue
                 chat_object = chunk_old_data.get("object", "chat.completion.chunk")
@@ -142,7 +143,7 @@ async def stream_response(response, model, max_tokens):
             continue
 
 
-def chat_response(resp, model, prompt_tokens, max_tokens, system_fingerprint=None):
+def chat_response(resp, model, prompt_tokens, max_tokens):
     chat_id = resp.get("id", "")
     if chat_id == "chatcmpl-QXlha2FBbmROaXhpZUFyZUF3ZXNvbWUK":
         chat_id = f"chatcmpl-{''.join(random.choice(string.ascii_letters + string.digits) for _ in range(29))}"
