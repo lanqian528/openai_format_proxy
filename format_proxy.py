@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request
 from starlette.background import BackgroundTask
 from starlette.responses import StreamingResponse, JSONResponse, Response
 
-from Logger import Logger
+from Logger import logger
 
 app = FastAPI()
 
@@ -106,9 +106,11 @@ async def stream_response(response, model, max_tokens):
                 continue
             else:
                 chunk_old_data = json.loads(chunk[6:])
+                if not chunk_old_data.get("choices"):
+                    continue
                 created_time = int(time.time())
                 index = chunk_old_data["choices"][0].get("index", 0)
-                delta = chunk_old_data["choices"][0].get("delta", None)
+                delta = chunk_old_data["choices"][0].get("delta", {})
                 finish_reason = chunk_old_data["choices"][0].get("finish_reason", None)
                 logprobs = chunk_old_data["choices"][0].get("logprobs", None)
                 if completion_tokens == max_tokens:
@@ -135,7 +137,7 @@ async def stream_response(response, model, max_tokens):
                 completion_tokens += 1
                 yield f"data: {json.dumps(chunk_new_data)}\n\n"
         except Exception as e:
-            Logger.error(f"Error: {chunk}")
+            logger.error(f"Error: {chunk}")
             continue
 
 
@@ -213,7 +215,7 @@ async def proxy_v1_images_generations(request: Request, proxy_url: str):
         return Response(content=response.content, media_type=response.headers['Content-Type'],
                         status_code=response.status_code, background=BackgroundTask(response.aclose))
     except Exception as e:
-        Logger.error(str(e))
+        logger.error(str(e))
         return JSONResponse(content={"error": "Something went wrong."}, status_code=500)
 
 
@@ -251,7 +253,7 @@ async def proxy_v1_chat_completions(request: Request, proxy_url: str):
             return Response(content=response.content, media_type=response.headers['Content-Type'],
                             status_code=response.status_code, background=BackgroundTask(response.aclose))
     except Exception as e:
-        Logger.error(str(e))
+        logger.error(str(e))
         return JSONResponse(content={"error": "Something went wrong."}, status_code=500)
 
 
@@ -281,7 +283,7 @@ async def proxy_others(request: Request, proxy_url: str, path: str):
                             status_code=response.status_code,
                             background=BackgroundTask(response.aclose))
     except Exception as e:
-        Logger.error(str(e))
+        logger.error(str(e))
         return JSONResponse(content={"error": "Something went wrong."}, status_code=500)
 
 
