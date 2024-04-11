@@ -95,6 +95,8 @@ async def stream_response(response, model, max_tokens):
     radnom_chat_id = f"chatcmpl-{''.join(random.choice(string.ascii_letters + string.digits) for _ in range(29))}"
     system_fingerprint_list = model_system_fingerprint.get(model, None)
     system_fingerprint = random.choice(system_fingerprint_list) if system_fingerprint_list else None
+    chat_object = "chat.completion.chunk"
+    chat_id = radnom_chat_id
     completion_tokens = -1
     async for chunk in response.aiter_lines():
         try:
@@ -104,13 +106,7 @@ async def stream_response(response, model, max_tokens):
                 continue
             else:
                 chunk_old_data = json.loads(chunk[6:])
-                chat_id = chunk_old_data.get("id", "")
-                if chat_id == "chatcmpl-QXlha2FBbmROaXhpZUFyZUF3ZXNvbWUK":
-                    chat_id = radnom_chat_id
-                if not chat_id:
-                    continue
-                chat_object = chunk_old_data.get("object", "chat.completion.chunk")
-                created_time = chunk_old_data.get("created", int(time.time()))
+                created_time = int(time.time())
                 index = chunk_old_data["choices"][0].get("index", 0)
                 delta = chunk_old_data["choices"][0].get("delta", None)
                 finish_reason = chunk_old_data["choices"][0].get("finish_reason", None)
@@ -121,7 +117,6 @@ async def stream_response(response, model, max_tokens):
                 if completion_tokens > max_tokens:
                     yield f"data: [DONE]\n\n"
                     break
-                # system_fingerprint = chunk_old_data.get("system_fingerprint", system_fingerprint)
                 chunk_new_data = {
                     "id": chat_id,
                     "object": chat_object,
@@ -140,17 +135,14 @@ async def stream_response(response, model, max_tokens):
                 completion_tokens += 1
                 yield f"data: {json.dumps(chunk_new_data)}\n\n"
         except Exception as e:
-            Logger.error(f"Error: {str(e)}")
             Logger.error(f"Error: {chunk}")
             continue
 
 
 def chat_response(resp, model, prompt_tokens, max_tokens):
-    chat_id = resp.get("id", "")
-    if chat_id == "chatcmpl-QXlha2FBbmROaXhpZUFyZUF3ZXNvbWUK":
-        chat_id = f"chatcmpl-{''.join(random.choice(string.ascii_letters + string.digits) for _ in range(29))}"
-    chat_object = resp.get("object", "chat.completion")
-    created_time = resp.get("created", int(time.time()))
+    chat_id = f"chatcmpl-{''.join(random.choice(string.ascii_letters + string.digits) for _ in range(29))}"
+    chat_object = "chat.completion"
+    created_time = int(time.time())
     index = resp["choices"][0].get("index", 0)
     message = resp["choices"][0].get("message", None)
     message_content, completion_tokens, finish_reason = split_tokens_from_content(message["content"], max_tokens, model)
