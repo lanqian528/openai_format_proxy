@@ -145,18 +145,34 @@ def num_tokens_from_content(content, model=None):
     return len_encoded_content
 
 
-def split_tokens_from_content(content, max_tokens, model=None):
+def split_tokens_from_content(message, max_tokens, model=None):
     try:
         encoding = tiktoken.encoding_for_model(model)
     except KeyError:
         encoding = tiktoken.get_encoding("cl100k_base")
-    encoded_content = encoding.encode(content)
-    len_encoded_content = len(encoded_content)
-    if len_encoded_content >= max_tokens:
-        content = encoding.decode(encoded_content[:max_tokens])
-        return content, max_tokens, "length"
-    else:
-        return content, len_encoded_content, "stop"
+
+    tokens = 0
+    stop_reason = "stop"
+    content = message.get("content")
+    if content:
+        encoded_content = encoding.encode(content)
+        len_encoded_content = len(encoded_content)
+        if len_encoded_content >= max_tokens:
+            content = encoding.decode(encoded_content[:max_tokens])
+            message["content"] = content
+            tokens += max_tokens
+            stop_reason = "length"
+        else:
+            message["content"] = content
+            tokens += len_encoded_content
+            stop_reason = "stop"
+    tool_calls = message.get("tool_calls")
+    if tool_calls:
+        encoded_tool_calls = encoding.encode(str(tool_calls))
+        len_encoded_tool_calls = len(encoded_tool_calls)
+        tokens += len_encoded_tool_calls
+        stop_reason = "tool_calls"
+    return message, tokens, stop_reason
 
 
 async def stream_response(response, model, max_tokens):
@@ -224,9 +240,7 @@ def chat_response(resp, model, send_message, max_tokens):
         index = resp["choices"][i].get("index", 0)
         message = resp["choices"][i].get("message", None)
         logprobs = resp["choices"][i].get("logprobs", None)
-        message_content, completion_tokens, finish_reason = split_tokens_from_content(message["content"], max_tokens,
-                                                                                      model)
-        message["content"] = message_content
+        message, completion_tokens, finish_reason = split_tokens_from_content(message, max_tokens, model)
 
         choices.append({
             "index": index,
