@@ -39,7 +39,7 @@ model_system_fingerprint = {
 }
 
 
-def decode_base64_image(base64_string):
+async def decode_base64_image(base64_string):
     if "base64," in base64_string:
         base64_str = base64_string.split("base64,")[1]
     image_data = base64.b64decode(base64_str)
@@ -49,27 +49,32 @@ def decode_base64_image(base64_string):
         return img.size
 
 
-def fetch_and_open_image(url):
-    with httpx.Client() as client:
-        response = client.get(url)
-        response.raise_for_status()
-    partial_image_data = io.BytesIO(response.content)
+async def fetch_and_open_image(url):
+    with httpx.AsyncClient as client:
+        r = await client.get(url)
+        r.raise_for_status()
+    partial_image_data = io.BytesIO(r.content)
     with Image.open(partial_image_data) as img:
         img.load()
-        return img.size
+        return img
 
 
-def calculate_image_tokens(image_url):
-    url = image_url.get("url")
+async def get_img(url):
+    if url.startswith("data:image"):
+        img = await decode_base64_image(url)
+    else:
+        img = await fetch_and_open_image(url)
+    return img
+
+
+async def calculate_image_tokens(image_url):
     detail = image_url.get("detail", "auto")
     if detail == "low":
         return 85
     else:
-        if url.startswith("data:image"):
-            size = decode_base64_image(url)
-        else:
-            size = fetch_and_open_image(url)
-        width, height = size
+        url = image_url.get("url")
+        img = await get_img(url)
+        width, height = img.size
 
         max_dimension = max(width, height)
         if max_dimension > 2048:
@@ -101,7 +106,7 @@ def calculate_image_tokens(image_url):
         return total_tokens
 
 
-def num_tokens_from_messages(messages, model=None):
+async def num_tokens_from_messages(messages, model=None):
     try:
         encoding = tiktoken.encoding_for_model(model)
     except KeyError:
@@ -128,14 +133,14 @@ def num_tokens_from_messages(messages, model=None):
                     if item.get("type") == "text":
                         num_tokens += len(encoding.encode(item.get("text")))
                     if item.get("type") == "image_url":
-                        num_tokens += calculate_image_tokens(item.get("image_url"))
+                        num_tokens += await calculate_image_tokens(item.get("image_url"))
             else:
                 num_tokens += len(encoding.encode(value))
     num_tokens += 3
     return num_tokens
 
 
-def num_tokens_from_content(content, model=None):
+async def num_tokens_from_content(content, model=None):
     try:
         encoding = tiktoken.encoding_for_model(model)
     except KeyError:
@@ -145,7 +150,7 @@ def num_tokens_from_content(content, model=None):
     return len_encoded_content
 
 
-def split_tokens_from_content(message, max_tokens, model=None):
+async def split_tokens_from_content(message, max_tokens, model=None):
     try:
         encoding = tiktoken.encoding_for_model(model)
     except KeyError:
@@ -229,7 +234,7 @@ async def stream_response(response, model, max_tokens):
             continue
 
 
-def chat_response(resp, model, send_message, max_tokens):
+async def chat_response(resp, model, send_message, max_tokens):
     choices = []
 
     chat_id = f"chatcmpl-{''.join(random.choice(string.ascii_letters + string.digits) for _ in range(29))}"
@@ -240,7 +245,7 @@ def chat_response(resp, model, send_message, max_tokens):
         index = resp["choices"][i].get("index", 0)
         message = resp["choices"][i].get("message", None)
         logprobs = resp["choices"][i].get("logprobs", None)
-        message, completion_tokens, finish_reason = split_tokens_from_content(message, max_tokens, model)
+        message, completion_tokens, finish_reason = await split_tokens_from_content(message, max_tokens, model)
 
         choices.append({
             "index": index,
@@ -252,7 +257,7 @@ def chat_response(resp, model, send_message, max_tokens):
         total_completion_tokens += completion_tokens
     usage = resp.get("usage", None)
     if not usage or not usage.get("total_tokens", 0):
-        prompt_tokens = num_tokens_from_messages(send_message, model)
+        prompt_tokens = await num_tokens_from_messages(send_message, model)
         usage = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": total_completion_tokens,
@@ -272,7 +277,7 @@ def chat_response(resp, model, send_message, max_tokens):
     return chat_response_json
 
 
-def image_response(resp):
+async def image_response(resp):
     created_time = resp.get("created", int(time.time()))
     revised_prompt = resp["data"][0].get("revised_prompt", None)
     image_url = resp["data"][0].get("url", None)

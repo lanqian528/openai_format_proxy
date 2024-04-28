@@ -2,4 +2,4 @@ fastapi
 httpx
 uvicorn
 tiktoken
-Pillow
+pillow
